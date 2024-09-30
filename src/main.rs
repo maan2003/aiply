@@ -156,7 +156,7 @@ mod tests {
             .filter_map(|entry| entry.file_name().to_str().map(String::from));
 
         for case in test_cases {
-            let input = fs::read_to_string(format!("tests/inputs/{}", case))
+            let input = fs::read_to_string(format!("src/tests/inputs/{}", case))
                 .expect("Failed to read test input file");
             let parsed_output = parse_llm_output(&input);
 
