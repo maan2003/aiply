@@ -1,0 +1,24 @@
+---
+source: src/main.rs
+expression: parsed_output
+---
+ParsedOutput {
+    instructions: [
+        Instruction {
+            text: "Add the `Encode` and `Decode` derive attributes to the `FsState`, `FilePath`, and `FileMetadata` structs:",
+        },
+    ],
+    code_changes: [
+        CodeChange {
+            language: "rust",
+            code: "#[derive(Encode, Decode)]\npub struct FsState {\n    files: BTreeMap<FilePath, FileMetadata>,\n}\n\n#[derive(Encode, Decode)]\npub struct FilePath(Arc<str>);\n\n#[derive(Encode, Decode)]\npub struct FileMetadata {\n    #[bincode(with_serde)]\n    content_hash: ContentHash,\n}\n",
+        },
+    ],
+    code_symbols: [
+        "Decode",
+        "Encode",
+        "FileMetadata",
+        "FilePath",
+        "FsState",
+    ],
+}
