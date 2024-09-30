@@ -142,33 +142,30 @@ fn main() -> std::io::Result<()> {
     Ok(())
 }
 
-use std::fs;
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-#[test]
-fn test_parse_llm_output() {
-    let test_cases: Vec<String> = fs::read_dir("tests/inputs")
-        .unwrap()
-        .filter_map(|entry| {
-            entry.ok().and_then(|e| {
-                e.path()
-                    .file_name()
-                    .and_then(|n| n.to_str().map(String::from))
-            })
-        })
-        .collect();
+    use std::fs;
 
-    for case in test_cases {
-        let input = fs::read_to_string(format!("tests/inputs/{}", case)).unwrap();
-        let parsed_output = parse_llm_output(&input);
+    #[test]
+    fn test_parse_llm_output() {
+        let test_cases = fs::read_dir("tests/inputs")
+            .expect("Failed to read test inputs directory")
+            .filter_map(|entry| entry.ok())
+            .filter_map(|entry| entry.file_name().to_str().map(String::from));
 
-        insta::with_settings!({
-            snapshot_path => "tests/snapshots",
-            prepend_module_to_snapshot => false,
-        }, {
-            insta::assert_debug_snapshot!(
-                case,
-                parsed_output
-            );
-        });
+        for case in test_cases {
+            let input = fs::read_to_string(format!("tests/inputs/{}", case))
+                .expect("Failed to read test input file");
+            let parsed_output = parse_llm_output(&input);
+
+            insta::with_settings!({
+                snapshot_path => "tests/snapshots",
+                prepend_module_to_snapshot => false,
+            }, {
+                insta::assert_debug_snapshot!(case, parsed_output);
+            });
+        }
     }
 }
