@@ -1,9 +1,9 @@
 ---
-source: src/main.rs
-expression: "(&parsed_output, extract_symbols(&parsed_output))"
+source: src/tests.rs
+expression: run_test(&input)
 ---
-(
-    ParsedOutput {
+TestOutput {
+    llm_output: ParsedLlmOutput {
         instructions: [
             Instruction {
                 text: "Add the `Encode` and `Decode` derive attributes to the `FsState`, `FilePath`, and `FileMetadata` structs:Foo::bar foo_bar FooBar",
@@ -16,19 +16,17 @@ expression: "(&parsed_output, extract_symbols(&parsed_output))"
             },
         ],
     },
-    RelevantSymbols {
-        instruction_symbols: [
-            #FileMetadata,
-            #FilePath,
-            #Foo::bar,
-            #FooBar,
-            #FsState,
-            #foo_bar,
-        ],
-        code_symbols: [
-            #FileMetadata,
-            #FilePath,
-            #FsState,
-        ],
-    },
-)
+    instruction_symbols: [
+        #FileMetadata,
+        #FilePath,
+        #FooBar,
+        #FsState,
+        #foo_bar,
+        #Foo::bar,
+    ],
+    code_symbols: [
+        #FileMetadata,
+        #FilePath,
+        #FsState,
+    ],
+}

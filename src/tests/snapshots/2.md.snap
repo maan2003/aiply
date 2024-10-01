@@ -1,9 +1,9 @@
 ---
-source: src/main.rs
-expression: "(&parsed_output, ctx.extract_symbols(&parsed_output))"
+source: src/tests.rs
+expression: run_test(&input)
 ---
-(
-    ParsedOutput {
+TestOutput {
+    llm_output: ParsedLlmOutput {
         instructions: [],
         code_changes: [
             CodeChange {
@@ -12,11 +12,9 @@ expression: "(&parsed_output, ctx.extract_symbols(&parsed_output))"
             },
         ],
     },
-    RelevantSymbols {
-        instruction_symbols: [],
-        code_symbols: [
-            #Foo,
-            #Foo::func,
-        ],
-    },
-)
+    instruction_symbols: [],
+    code_symbols: [
+        #Foo,
+        #func,
+    ],
+}

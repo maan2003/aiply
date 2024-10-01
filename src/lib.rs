@@ -1,9 +1,9 @@
-use tree_sitter::{Parser as TsParser, Query, QueryCursor};
-
 mod instruction_parser;
 mod markdown_parser;
 #[cfg(test)]
 mod tests;
+
+use tree_sitter::{Parser as TsParser, Query, QueryCursor};
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Symbol {
