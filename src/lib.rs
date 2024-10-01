@@ -120,4 +120,25 @@ mod tests {
         let symbols = context.parse_code_symbols("python", "def my_function():\n    pass");
         assert_eq!(symbols.len(), 0);
     }
+
+    #[test]
+    fn test_parse_code_symbols_impl_function() {
+        let mut context = CodeParsingContext::new();
+        let code = r#"
+            struct MyStruct;
+
+            impl MyStruct {
+                fn my_method(&self) {
+                    println!("Hello from my_method!");
+                }
+            }
+        "#;
+
+        let symbols = context.parse_code_symbols("rust", code);
+
+        assert_eq!(symbols.len(), 3);
+        assert_eq!(format!("{:?}", symbols[0]), "#MyStruct");
+        assert_eq!(format!("{:?}", symbols[1]), "#my_method");
+        assert_eq!(format!("{:?}", symbols[2]), "#MyStruct");
+    }
 }
