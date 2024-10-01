@@ -25,5 +25,10 @@ expression: "(&parsed_output, extract_symbols(&parsed_output))"
             "FsState",
             "foo_bar",
         ],
+        code_symbols: [
+            "FileMetadata",
+            "FilePath",
+            "FsState",
+        ],
     },
 )

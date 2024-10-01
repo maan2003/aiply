@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use clap::{Parser, Subcommand};
 use pulldown_cmark::{CodeBlockKind, Event, Parser as MarkdownParser, Tag, TagEnd};
 use regex::Regex;
+use tree_sitter::{Query, QueryCursor};
 
 fn parse_code_symbols(text: &str) -> Vec<String> {
     let symbol_pattern = Regex::new(
@@ -44,20 +45,56 @@ struct ParsedOutput {
 #[derive(Clone, Debug)]
 struct RelevantSymbols {
     instruction_symbols: Vec<String>,
+    code_symbols: Vec<String>,
 }
 
 fn extract_symbols(parsed_output: &ParsedOutput) -> RelevantSymbols {
     let mut instruction_symbols = Vec::new();
+    let mut code_symbols = Vec::new();
 
+    // Extract symbols from instructions
     for instruction in &parsed_output.instructions {
         instruction_symbols.extend(parse_code_symbols(&instruction.text));
     }
 
+    let mut parser = tree_sitter::Parser::new();
+    parser
+        .set_language(tree_sitter_rust::language())
+        .expect("Error loading Rust grammar");
+
+    let query = Query::new(
+        tree_sitter_rust::language(),
+        "(function_item name: (identifier) @function)
+         (impl_item type: (type_identifier) @impl)
+         (struct_item name: (type_identifier) @struct)
+         (trait_item name: (type_identifier) @trait)",
+    )
+    .unwrap();
+
+    for code_change in &parsed_output.code_changes {
+        if code_change.language.to_lowercase() == "rust" {
+            let tree = parser.parse(&code_change.code, None).unwrap();
+            let root_node = tree.root_node();
+
+            // Extract names
+            let mut query_cursor = QueryCursor::new();
+            for m in query_cursor.matches(&query, root_node, code_change.code.as_bytes()) {
+                for capture in m.captures {
+                    let name = &code_change.code[capture.node.byte_range()];
+                    code_symbols.push(name.to_string());
+                }
+            }
+        }
+    }
+
     instruction_symbols.sort();
     instruction_symbols.dedup();
+    code_symbols.sort();
+    code_symbols.dedup();
 
     RelevantSymbols {
         instruction_symbols,
+        code_symbols,
     }
 }
 
