@@ -26,12 +26,23 @@ impl std::fmt::Debug for Symbol {
 pub struct CodeParsingContext {
     parser: Parser,
     query: Query,
+    collapse_query: Query,
+}
+
+pub enum CollapseReplacement {
+    Range(Range<usize>),
+    Imports,
+}
+
+pub struct Collapse {
+    replacement: CollapseReplacement,
+    target: Range<usize>,
 }
 
 pub struct CollapsedDocument<'a> {
     original_document: &'a str,
     // invariant: non overlapping, sorted
-    collapsed_sections: Vec<Range<usize>>,
+    collapses: Vec<Collapse>,
 }
 
 impl<'a> CollapsedDocument<'a> {
@@ -39,12 +50,20 @@ impl<'a> CollapsedDocument<'a> {
         let mut result = String::new();
         let mut last_end = 0;
 
-        for section in &self.collapsed_sections {
+        for collapse in &self.collapses {
             // Add uncollapsed content
-            result.push_str(&self.original_document[last_end..section.start]);
-            // Add ellipsis for collapsed content
-            result.push_str("...");
-            last_end = section.end;
+            result.push_str(&self.original_document[last_end..collapse.target.start]);
+            // Add replacement content
+            match &collapse.replacement {
+                CollapseReplacement::Range(range) => {
+                    result.push_str(&self.original_document[range.clone()]);
+                    result.push_str(" ...");
+                }
+                CollapseReplacement::Imports => {
+                    result.push_str("use ...");
+                }
+            }
+            last_end = collapse.target.end;
         }
 
         // Add remaining uncollapsed content
@@ -64,8 +83,19 @@ impl CodeParsingContext {
         let query_source = include_str!("rust_query.scm");
         let query = Query::new(tree_sitter_rust::language(), &query_source)
             .expect("Failed to create query");
+        let collapse_query = Query::new(
+            tree_sitter_rust::language(),
+            "
+            (use_declaration)+ @collapse
+            ",
+        )
+        .expect("Failed to create query");
 
-        CodeParsingContext { parser, query }
+        CodeParsingContext {
+            parser,
+            query,
+            collapse_query,
+        }
     }
 
     pub fn parse_code_symbols(&mut self, language: &str, code: &str) -> Vec<Symbol> {
@@ -95,7 +125,6 @@ impl CodeParsingContext {
             for capture in m.captures {
                 let byte_range = capture.node.byte_range();
                 let capture_name = self.query.capture_names()[capture.index as usize].as_str();
-                dbg!(capture_name, capture.node.to_sexp());
                 match capture_name {
                     "name" => {
                         name = Some((&code[byte_range.clone()]).to_string());
@@ -141,7 +170,25 @@ impl CodeParsingContext {
     ) -> CollapsedDocument<'a> {
         let symbols_with_range = self.extract_symbols_with_range(original_doc);
         let processed_symbols = self.process_symbols(symbols_with_range);
-        let mut collapsed_sections = Vec::new();
+        let mut collapses = Vec::new();
+        let tree = self.parser.parse(original_doc, None).unwrap();
+        let root_node = tree.root_node();
+        let mut query_cursor = QueryCursor::new();
+        for m in query_cursor.matches(&self.collapse_query, root_node, original_doc.as_bytes()) {
+            let mut start = usize::MAX;
+            let mut end = 0;
+            for capture in m.captures {
+                let byte_range = capture.node.byte_range();
+                start = start.min(byte_range.start);
+                end = end.max(byte_range.end);
+            }
+            if start < end {
+                collapses.push(Collapse {
+                    replacement: CollapseReplacement::Imports,
+                    target: start..end,
+                });
+            }
+        }
 
         for symbol in processed_symbols {
             if !important_symbols
@@ -149,39 +196,37 @@ impl CodeParsingContext {
                 .any(|important| self.symbols_match(&symbol.symbol, important))
             {
                 // Collapse the range that's not part of the summary
-                if symbol.range.start < symbol.summary_range.start {
-                    collapsed_sections.push(Range {
-                        start: symbol.range.start,
-                        end: symbol.summary_range.start,
-                    });
-                }
-                if symbol.summary_range.end < symbol.range.end {
-                    collapsed_sections.push(Range {
-                        start: symbol.summary_range.end,
-                        end: symbol.range.end,
+                if symbol.range.start < symbol.summary_range.start
+                    || symbol.range.end > symbol.summary_range.end
+                {
+                    collapses.push(Collapse {
+                        replacement: CollapseReplacement::Range(
+                            symbol.summary_range.start..symbol.summary_range.end,
+                        ),
+                        target: symbol.range.start..symbol.range.end,
                     });
                 }
             }
         }
 
-        // Merge overlapping or adjacent ranges
-        collapsed_sections.sort_by_key(|r| r.start);
-        let mut merged_sections: Vec<Range<usize>> = Vec::new();
-        for section in collapsed_sections {
-            if let Some(last) = merged_sections.last_mut() {
-                if last.end >= section.start {
-                    last.end = last.end.max(section.end);
+        // Merge overlapping or adjacent collapses
+        collapses.sort_by_key(|c| c.target.start);
+        let mut merged_collapses: Vec<Collapse> = Vec::new();
+        for collapse in collapses {
+            if let Some(last) = merged_collapses.last_mut() {
+                if last.target.end >= collapse.target.start {
+                    last.target.end = last.target.end.max(collapse.target.end);
                 } else {
-                    merged_sections.push(section);
+                    merged_collapses.push(collapse);
                 }
             } else {
-                merged_sections.push(section);
+                merged_collapses.push(collapse);
             }
         }
 
         CollapsedDocument {
             original_document: original_doc,
-            collapsed_sections: merged_sections,
+            collapses: merged_collapses,
         }
     }
 

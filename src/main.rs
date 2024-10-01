@@ -1,6 +1,6 @@
 use aiply::instruction_parser::parse_instruction_symbols;
 use aiply::markdown_parser::ParsedLlmOutput;
-use aiply::{instruction_parser, CodeParsingContext, Symbol};
+use aiply::CodeParsingContext;
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::fs;
@@ -29,8 +29,6 @@ fn main() -> Result<()> {
 
     let parsed_output = ParsedLlmOutput::parse(&llm_output);
     let mut context = CodeParsingContext::new();
-
-    let all_symbols = context.parse_code_symbols("rust", &source_code);
 
     let mut important_symbols = vec![];
     for code_changes in parsed_output.code_changes {
