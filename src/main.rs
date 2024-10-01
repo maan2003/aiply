@@ -191,6 +191,7 @@ mod tests {
                 vec!["HelloWorld", "snake_case", "Foo::Bar"],
             ),
             ("hello world", vec![]),
+            ("Hello World", vec![]),
             (
                 "Symbols with numbers: Hello123World snake_case_42",
                 vec!["Hello123World", "snake_case_42"],
