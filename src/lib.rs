@@ -1,24 +1,20 @@
 pub mod instruction_parser;
 pub mod markdown_parser;
 
-use tree_sitter::{Parser, Query, QueryCursor};
+use std::ops::Range;
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-struct Range {
-    start: usize,
-    end: usize,
-}
+use tree_sitter::{Parser, Query, QueryCursor};
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Symbol {
     pub parts: Vec<String>,
 }
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq)]
 struct SymbolWithRange {
     symbol: Symbol,
-    range: Range,
-    summary_range: Range,
+    range: Range<usize>,
+    summary_range: Range<usize>,
 }
 
 impl std::fmt::Debug for Symbol {
@@ -30,6 +26,32 @@ impl std::fmt::Debug for Symbol {
 pub struct CodeParsingContext {
     parser: Parser,
     query: Query,
+}
+
+pub struct CollapsedDocument<'a> {
+    original_document: &'a str,
+    // invariant: non overlapping, sorted
+    collapsed_sections: Vec<Range<usize>>,
+}
+
+impl<'a> CollapsedDocument<'a> {
+    pub fn collapsed_document(&self) -> String {
+        let mut result = String::new();
+        let mut last_end = 0;
+
+        for section in &self.collapsed_sections {
+            // Add uncollapsed content
+            result.push_str(&self.original_document[last_end..section.start]);
+            // Add ellipsis for collapsed content
+            result.push_str("...");
+            last_end = section.end;
+        }
+
+        // Add remaining uncollapsed content
+        result.push_str(&self.original_document[last_end..]);
+
+        result
+    }
 }
 
 impl CodeParsingContext {
@@ -53,6 +75,9 @@ impl CodeParsingContext {
         }
         let symbols_with_range = self.extract_symbols_with_range(code);
         self.process_symbols(symbols_with_range)
+            .into_iter()
+            .map(|x| x.symbol)
+            .collect()
     }
 
     fn extract_symbols_with_range(&mut self, code: &str) -> Vec<SymbolWithRange> {
@@ -103,7 +128,74 @@ impl CodeParsingContext {
         symbols_with_range
     }
 
-    fn process_symbols(&self, mut symbols_with_range: Vec<SymbolWithRange>) -> Vec<Symbol> {
+    pub fn collapse_unrelated_symbols<'a>(
+        &mut self,
+        original_doc: &'a str,
+        important_symbols: Vec<Symbol>,
+    ) -> CollapsedDocument<'a> {
+        let symbols_with_range = self.extract_symbols_with_range(original_doc);
+        let processed_symbols = self.process_symbols(symbols_with_range);
+        let mut collapsed_sections = Vec::new();
+
+        for symbol in processed_symbols {
+            if !important_symbols
+                .iter()
+                .any(|important| self.symbols_match(&symbol.symbol, important))
+            {
+                // Collapse the range that's not part of the summary
+                if symbol.range.start < symbol.summary_range.start {
+                    collapsed_sections.push(Range {
+                        start: symbol.range.start,
+                        end: symbol.summary_range.start,
+                    });
+                }
+                if symbol.summary_range.end < symbol.range.end {
+                    collapsed_sections.push(Range {
+                        start: symbol.summary_range.end,
+                        end: symbol.range.end,
+                    });
+                }
+            }
+        }
+
+        // Merge overlapping or adjacent ranges
+        collapsed_sections.sort_by_key(|r| r.start);
+        let mut merged_sections: Vec<Range<usize>> = Vec::new();
+        for section in collapsed_sections {
+            if let Some(last) = merged_sections.last_mut() {
+                if last.end >= section.start {
+                    last.end = last.end.max(section.end);
+                } else {
+                    merged_sections.push(section);
+                }
+            } else {
+                merged_sections.push(section);
+            }
+        }
+
+        CollapsedDocument {
+            original_document: original_doc,
+            collapsed_sections: merged_sections,
+        }
+    }
+
+    fn symbols_match(&self, symbol: &Symbol, important: &Symbol) -> bool {
+        // if symbol.parts.len() < important.parts.len() {
+        //     return false;
+        // }
+
+        for (s, i) in symbol.parts.iter().zip(important.parts.iter()) {
+            if s != i {
+                return false;
+            }
+        }
+        true
+    }
+
+    fn process_symbols(
+        &self,
+        mut symbols_with_range: Vec<SymbolWithRange>,
+    ) -> Vec<SymbolWithRange> {
         symbols_with_range.sort_by_key(|s| (s.range.start, std::cmp::Reverse(s.range.end)));
 
         let mut stack = Vec::<SymbolWithRange>::new();
@@ -111,7 +203,6 @@ impl CodeParsingContext {
 
         for mut symbol_with_range in symbols_with_range {
             while let Some(last) = stack.last() {
-                // not overlapping
                 if last.range.end <= symbol_with_range.range.start {
                     stack.pop();
                 } else {
@@ -129,7 +220,7 @@ impl CodeParsingContext {
                     .collect();
             }
 
-            result.push(symbol_with_range.symbol.clone());
+            result.push(symbol_with_range.clone());
             stack.push(symbol_with_range);
         }
 
