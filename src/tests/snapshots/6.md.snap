@@ -1,0 +1,29 @@
+---
+source: src/integration_tests.rs
+expression: run_test(&input)
+---
+TestOutput {
+    llm_output: ParsedLlmOutput {
+        instructions: [
+            Instruction {
+                text: "Now, let's modify the `src/main.rs` file. We'll need to add some new imports and modify the `RelevantSymbols` struct and `extract_symbols` function:",
+            },
+        ],
+        code_changes: [
+            CodeChange {
+                language: "rust",
+                code: "use tree_sitter::{Parser, Language, Query, QueryCursor};\n\n// Add this function at the top level of the file\nfn tree_sitter_rust() -> Language {\n    extern \"C\" { fn tree_sitter_rust() -> Language; }\n    unsafe { tree_sitter_rust() }\n}\n\n#[derive(Clone, Debug)]\nstruct RelevantSymbols {\n    instruction_symbols: Vec<String>,\n    function_names: Vec<String>,\n    impl_names: Vec<String>,\n}\n\nfn extract_symbols(parsed_output: &ParsedOutput) -> RelevantSymbols {\n    let mut instruction_symbols = Vec::new();\n    let mut function_names = Vec::new();\n    let mut impl_names = Vec::new();\n\n    for instruction in &parsed_output.instructions {\n        instruction_symbols.extend(parse_code_symbols(&instruction.text));\n    }\n\n    // Create a parser\n    let mut parser = Parser::new();\n    parser.set_language(tree_sitter_rust()).expect(\"Error loading Rust grammar\");\n\n    // Create queries for functions and impls\n    let function_query = Query::new(tree_sitter_rust(), \"(function_item name: (identifier) @function)\").unwrap();\n    let impl_query = Query::new(tree_sitter_rust(), \"(impl_item name: (type_identifier) @impl)\").unwrap();\n\n    for code_change in &parsed_output.code_changes {\n        if code_change.language.to_lowercase() == \"rust\" {\n            let tree = parser.parse(&code_change.code, None).unwrap();\n            let root_node = tree.root_node();\n\n            // Extract function names\n            let mut query_cursor = QueryCursor::new();\n            for m in query_cursor.matches(&function_query, root_node, code_change.code.as_bytes()) {\n                for capture in m.captures {\n                    let name = &code_change.code[capture.node.byte_range()];\n                    function_names.push(name.to_string());\n                }\n            }\n\n            // Extract impl names\n            let mut query_cursor = QueryCursor::new();\n            for m in query_cursor.matches(&impl_query, root_node, code_change.code.as_bytes()) {\n                for capture in m.captures {\n                    let name = &code_change.code[capture.node.byte_range()];\n                    impl_names.push(name.to_string());\n                }\n            }\n        }\n    }\n\n    instruction_symbols.sort();\n    instruction_symbols.dedup();\n    function_names.sort();\n    function_names.dedup();\n    impl_names.sort();\n    impl_names.dedup();\n\n    RelevantSymbols {\n        instruction_symbols,\n        function_names,\n        impl_names,\n    }\n}\n",
+            },
+        ],
+    },
+    instruction_symbols: [
+        #RelevantSymbols,
+        #extract_symbols,
+    ],
+    code_symbols: [
+        #RelevantSymbols,
+        #extract_symbols,
+        #tree_sitter_rust,
+        #tree_sitter_rust::tree_sitter_rust,
+    ],
+}

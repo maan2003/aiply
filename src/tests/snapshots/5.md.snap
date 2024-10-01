@@ -1,0 +1,26 @@
+---
+source: src/integration_tests.rs
+expression: run_test(&input)
+---
+TestOutput {
+    llm_output: ParsedLlmOutput {
+        instructions: [
+            Instruction {
+                text: "Now, let's update the `parse_llm_output` function with these changes:",
+            },
+        ],
+        code_changes: [
+            CodeChange {
+                language: "rust",
+                code: "fn parse_llm_output(output: &str) -> ParsedOutput {\n    // ... (keep the existing code until the regex definitions)\n\n    let pascal_case_pattern = Regex::new(r\"\\b([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)*)\\b\").unwrap();\n    let snake_case_pattern = Regex::new(r\"\\b([a-z][a-z0-9]*(?:_[a-z][a-z0-9]+)+)\\b\").unwrap();\n    let double_colon_pattern = Regex::new(r\"\\b([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)+)\\b\").unwrap();\n\n    for event in parser {\n        match event {\n            Event::Text(text) => {\n                if in_code_block {\n                    current_code_change.code.push_str(&text);\n                } else {\n                    current_instruction.push_str(&text);\n\n                    let mut symbols = Vec::new();\n                    symbols.extend(pascal_case_pattern.find_iter(&text).map(|m| m.as_str().to_string()));\n                    symbols.extend(snake_case_pattern.find_iter(&text).map(|m| m.as_str().to_string()));\n                    symbols.extend(double_colon_pattern.find_iter(&text).map(|m| m.as_str().to_string()));\n                    parsed_output.code_symbols.extend(symbols);\n                }\n            }\n            // ... (keep the rest of the match arms unchanged)\n        }\n    }\n\n    // ... (keep the code after the for loop)\n\n    remove_overlapping_symbols(&mut parsed_output.code_symbols);\n    parsed_output.code_symbols.sort();\n    parsed_output.code_symbols.dedup();\n\n    parsed_output\n}\n\nfn remove_overlapping_symbols(symbols: &mut Vec<String>) {\n    symbols.sort_by(|a, b| b.len().cmp(&a.len()));\n    let mut i = 0;\n    while i < symbols.len() {\n        let current = &symbols[i];\n        symbols.retain(|s| s == current || !current.contains(s));\n        i += 1;\n    }\n}\n",
+            },
+        ],
+    },
+    instruction_symbols: [
+        #parse_llm_output,
+    ],
+    code_symbols: [
+        #parse_llm_output,
+        #remove_overlapping_symbols,
+    ],
+}
