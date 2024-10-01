@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use clap::{Parser, Subcommand};
 use pulldown_cmark::{CodeBlockKind, Event, Parser as MarkdownParser, Tag, TagEnd};
@@ -7,17 +8,20 @@ use regex::Regex;
 use tree_sitter::{Query, QueryCursor};
 
 fn parse_code_symbols(text: &str) -> Vec<String> {
-    let symbol_pattern = Regex::new(
-        r#"(?x)
-        \b(?:
-            [a-z0-9]+(?:(?:::[a-z0-9_A-Z]*|_[a-z0-9]+))+
-           |
-            [A-Z][a-z0-9]*(?:(?:::[a-z0-9_A-Z]*|[A-Z][a-z0-9]*))+
-          )
-        \b
-    "#,
-    )
-    .unwrap();
+    static SYMBOL_REGEX: OnceLock<Regex> = OnceLock::new();
+    let symbol_pattern = SYMBOL_REGEX.get_or_init(|| {
+        Regex::new(
+            r#"(?x)
+            \b(?:
+                [a-z0-9]+(?:(?:::[a-z0-9_A-Z]*|_[a-z0-9]+))+
+               |
+                [A-Z][a-z0-9]*(?:(?:::[a-z0-9_A-Z]*|[A-Z][a-z0-9]*))+
+              )
+            \b
+        "#,
+        )
+        .unwrap()
+    });
 
     symbol_pattern
         .find_iter(text)
