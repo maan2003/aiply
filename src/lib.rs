@@ -53,9 +53,8 @@ impl CodeParsingContext {
             let mut is_item = false;
 
             for capture in m.captures {
-                let capture_text = &code[capture.node.byte_range()];
                 match self.query.capture_names()[capture.index as usize].as_str() {
-                    "name" => name = Some(capture_text.to_string()),
+                    "name" => name = Some((&code[capture.node.byte_range()]).to_string()),
                     "item" => is_item = true,
                     _ => {}
                 }
