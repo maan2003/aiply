@@ -22,17 +22,8 @@ pub fn parse_instruction_symbols(text: &str) -> Vec<Symbol> {
         .find_iter(text)
         .map(|m| {
             let s = m.as_str();
-            if let Some((container, name)) = s.rsplit_once("::") {
-                Symbol {
-                    container: Some(container.to_string()),
-                    name: name.to_string(),
-                }
-            } else {
-                Symbol {
-                    container: None,
-                    name: s.to_string(),
-                }
-            }
+            let parts = s.split("::").map(|x| x.to_owned()).collect();
+            Symbol { parts }
         })
         .collect()
 }

@@ -1,5 +1,5 @@
 ---
-source: src/tests.rs
+source: src/integration_tests.rs
 expression: run_test(&input)
 ---
 TestOutput {
@@ -19,10 +19,10 @@ TestOutput {
     instruction_symbols: [
         #FileMetadata,
         #FilePath,
+        #Foo::bar,
         #FooBar,
         #FsState,
         #foo_bar,
-        #Foo::bar,
     ],
     code_symbols: [
         #FileMetadata,

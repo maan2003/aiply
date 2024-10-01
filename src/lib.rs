@@ -3,18 +3,26 @@ pub mod markdown_parser;
 
 use tree_sitter::{Parser as TsParser, Query, QueryCursor};
 
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+struct Range {
+    start: usize,
+    end: usize,
+}
+
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Symbol {
-    pub container: Option<String>,
-    pub name: String,
+    pub parts: Vec<String>,
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct SymbolWithRange {
+    symbol: Symbol,
+    range: Range,
 }
 
 impl std::fmt::Debug for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.container {
-            Some(container) => write!(f, "#{}::{}", container, self.name),
-            None => write!(f, "#{}", self.name),
-        }
+        write!(f, "#{}", self.parts.join("::"))
     }
 }
 
@@ -45,30 +53,68 @@ impl CodeParsingContext {
         let tree = self.parser.parse(code, None).unwrap();
         let root_node = tree.root_node();
 
-        let mut symbols = Vec::new();
+        let mut symbols_with_range = Vec::new();
         let mut query_cursor = QueryCursor::new();
         for m in query_cursor.matches(&self.query, root_node, code.as_bytes()) {
-            let mut container = None;
             let mut name = None;
-            let mut is_item = false;
+            let mut range = None;
 
             for capture in m.captures {
                 match self.query.capture_names()[capture.index as usize].as_str() {
                     "name" => name = Some((&code[capture.node.byte_range()]).to_string()),
-                    "item" => is_item = true,
+                    "item" => {
+                        let byte_range = capture.node.byte_range();
+                        range = Some(Range {
+                            start: byte_range.start,
+                            end: byte_range.end,
+                        });
+                    }
                     _ => {}
                 }
             }
 
-            if is_item && name.is_some() {
-                symbols.push(Symbol {
-                    container,
-                    name: name.unwrap(),
+            if let (Some(name), Some(range)) = (name, range) {
+                symbols_with_range.push(SymbolWithRange {
+                    symbol: Symbol { parts: vec![name] },
+                    range,
                 });
             }
         }
 
-        symbols
+        self.process_symbols(symbols_with_range)
+    }
+
+    fn process_symbols(&self, mut symbols_with_range: Vec<SymbolWithRange>) -> Vec<Symbol> {
+        symbols_with_range.sort_by_key(|s| (s.range.start, std::cmp::Reverse(s.range.end)));
+
+        let mut stack = Vec::<SymbolWithRange>::new();
+        let mut result = Vec::new();
+
+        for mut symbol_with_range in symbols_with_range {
+            while let Some(last) = stack.last() {
+                // not overlapping
+                if last.range.end < symbol_with_range.range.end {
+                    stack.pop();
+                } else {
+                    break;
+                }
+            }
+
+            if let Some(parent) = stack.last() {
+                symbol_with_range.symbol.parts = parent
+                    .symbol
+                    .parts
+                    .iter()
+                    .chain(symbol_with_range.symbol.parts.iter())
+                    .cloned()
+                    .collect();
+            }
+
+            result.push(symbol_with_range.symbol.clone());
+            stack.push(symbol_with_range.clone());
+        }
+
+        result
     }
 }
 
@@ -137,7 +183,7 @@ mod tests {
 
         assert_eq!(symbols.len(), 3);
         assert_eq!(format!("{:?}", symbols[0]), "#MyStruct");
-        assert_eq!(format!("{:?}", symbols[1]), "#my_method");
-        assert_eq!(format!("{:?}", symbols[2]), "#MyStruct");
+        assert_eq!(format!("{:?}", symbols[1]), "#MyStruct");
+        assert_eq!(format!("{:?}", symbols[2]), "#MyStruct::my_method");
     }
 }
