@@ -39,7 +39,26 @@ struct CodeChange {
 struct ParsedOutput {
     instructions: Vec<Instruction>,
     code_changes: Vec<CodeChange>,
-    code_symbols: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+struct RelevantSymbols {
+    instruction_symbols: Vec<String>,
+}
+
+fn extract_symbols(parsed_output: &ParsedOutput) -> RelevantSymbols {
+    let mut instruction_symbols = Vec::new();
+
+    for instruction in &parsed_output.instructions {
+        instruction_symbols.extend(parse_code_symbols(&instruction.text));
+    }
+
+    instruction_symbols.sort();
+    instruction_symbols.dedup();
+
+    RelevantSymbols {
+        instruction_symbols,
+    }
 }
 
 fn parse_llm_output(output: &str) -> ParsedOutput {
@@ -47,7 +66,6 @@ fn parse_llm_output(output: &str) -> ParsedOutput {
     let mut parsed_output = ParsedOutput {
         instructions: Vec::new(),
         code_changes: Vec::new(),
-        code_symbols: Vec::new(),
     };
     let mut current_instruction = String::new();
     let mut in_code_block = false;
@@ -63,13 +81,11 @@ fn parse_llm_output(output: &str) -> ParsedOutput {
                     current_code_change.code.push_str(&text);
                 } else {
                     current_instruction.push_str(&text);
-                    parsed_output.code_symbols.extend(parse_code_symbols(&text));
                 }
             }
             Event::Code(code) => {
                 if !in_code_block {
                     current_instruction.push_str(&format!("`{}`", code));
-                    parsed_output.code_symbols.push(code.to_string());
                 }
             }
             Event::Start(Tag::CodeBlock(lang)) => {
@@ -116,9 +132,6 @@ fn parse_llm_output(output: &str) -> ParsedOutput {
         });
     }
 
-    parsed_output.code_symbols.sort();
-    parsed_output.code_symbols.dedup();
-
     parsed_output
 }
 
@@ -141,7 +154,8 @@ fn main() -> std::io::Result<()> {
         Commands::Parse { file } => {
             let content = std::fs::read_to_string(file)?;
             let parsed_output = parse_llm_output(&content);
-            println!("{parsed_output:#?}");
+            let relevent_symbols = extract_symbols(&parsed_output);
+            println!("{relevent_symbols:#?}");
         }
     }
 
@@ -170,7 +184,7 @@ mod tests {
                 snapshot_path => "tests/snapshots",
                 prepend_module_to_snapshot => false,
             }, {
-                insta::assert_debug_snapshot!(case, parsed_output);
+                insta::assert_debug_snapshot!(&*case, (&parsed_output, extract_symbols(&parsed_output)));
             });
         }
     }

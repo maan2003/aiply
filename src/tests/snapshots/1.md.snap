@@ -1,27 +1,29 @@
 ---
 source: src/main.rs
-expression: parsed_output
+expression: "(&parsed_output, extract_symbols(&parsed_output))"
 ---
-ParsedOutput {
-    instructions: [
-        Instruction {
-            text: "Add the `Encode` and `Decode` derive attributes to the `FsState`, `FilePath`, and `FileMetadata` structs:Foo::bar foo_bar FooBar",
-        },
-    ],
-    code_changes: [
-        CodeChange {
-            language: "rust",
-            code: "#[derive(Encode, Decode)]\npub struct FsState {\n    files: BTreeMap<FilePath, FileMetadata>,\n}\n\n#[derive(Encode, Decode)]\npub struct FilePath(Arc<str>);\n\n#[derive(Encode, Decode)]\npub struct FileMetadata {\n    #[bincode(with_serde)]\n    content_hash: ContentHash,\n}\n",
-        },
-    ],
-    code_symbols: [
-        "Decode",
-        "Encode",
-        "FileMetadata",
-        "FilePath",
-        "Foo::bar",
-        "FooBar",
-        "FsState",
-        "foo_bar",
-    ],
-}
+(
+    ParsedOutput {
+        instructions: [
+            Instruction {
+                text: "Add the `Encode` and `Decode` derive attributes to the `FsState`, `FilePath`, and `FileMetadata` structs:Foo::bar foo_bar FooBar",
+            },
+        ],
+        code_changes: [
+            CodeChange {
+                language: "rust",
+                code: "#[derive(Encode, Decode)]\npub struct FsState {\n    files: BTreeMap<FilePath, FileMetadata>,\n}\n\n#[derive(Encode, Decode)]\npub struct FilePath(Arc<str>);\n\n#[derive(Encode, Decode)]\npub struct FileMetadata {\n    #[bincode(with_serde)]\n    content_hash: ContentHash,\n}\n",
+            },
+        ],
+    },
+    RelevantSymbols {
+        instruction_symbols: [
+            "FileMetadata",
+            "FilePath",
+            "Foo::bar",
+            "FooBar",
+            "FsState",
+            "foo_bar",
+        ],
+    },
+)
