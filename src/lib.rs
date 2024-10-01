@@ -186,4 +186,40 @@ mod tests {
         assert_eq!(format!("{:?}", symbols[1]), "#MyStruct");
         assert_eq!(format!("{:?}", symbols[2]), "#MyStruct::my_method");
     }
+    #[test]
+    fn test_parse_code_symbols_nested_mods_and_functions() {
+        let mut context = CodeParsingContext::new();
+        let code = r#"
+        mod outer {
+            fn outer_function() {
+                println!("Outer function");
+            }
+
+            mod inner {
+                fn inner_function() {
+                    println!("Inner function");
+                }
+
+                mod innermost {
+                    fn innermost_function() {
+                        println!("Innermost function");
+                    }
+                }
+            }
+        }
+    "#;
+
+        let symbols = context.parse_code_symbols("rust", code);
+
+        assert_eq!(symbols.len(), 6);
+        assert_eq!(format!("{:?}", symbols[0]), "#outer");
+        assert_eq!(format!("{:?}", symbols[1]), "#outer::outer_function");
+        assert_eq!(format!("{:?}", symbols[2]), "#outer::inner");
+        assert_eq!(format!("{:?}", symbols[3]), "#outer::inner::inner_function");
+        assert_eq!(format!("{:?}", symbols[4]), "#outer::inner::innermost");
+        assert_eq!(
+            format!("{:?}", symbols[5]),
+            "#outer::inner::innermost::innermost_function"
+        );
+    }
 }
