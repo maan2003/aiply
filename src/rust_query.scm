@@ -11,10 +11,6 @@
     "enum" @context
     name: (_) @name) @item
 
-(enum_variant
-    (visibility_modifier)? @context
-    name: (_) @name) @item
-
 (impl_item
     "impl" @context
     trait: (_)? @name

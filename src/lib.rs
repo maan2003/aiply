@@ -1,7 +1,5 @@
 pub mod instruction_parser;
 pub mod markdown_parser;
-#[cfg(test)]
-mod tests;
 
 use tree_sitter::{Parser as TsParser, Query, QueryCursor};
 
@@ -72,5 +70,54 @@ impl CodeParsingContext {
         }
 
         symbols
+    }
+}
+
+#[cfg(test)]
+mod integration_tests;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_code_symbols() {
+        let mut context = CodeParsingContext::new();
+
+        let code = r#"
+            struct MyStruct {
+                field: i32,
+            }
+
+            fn my_function() {
+                println!("Hello, world!");
+            }
+
+            enum MyEnum {
+                VariantA,
+                VariantB,
+            }
+        "#;
+
+        let symbols = context.parse_code_symbols("rust", code);
+
+        assert_eq!(symbols.len(), 3);
+        assert_eq!(symbols[0].name, "MyStruct");
+        assert_eq!(symbols[1].name, "my_function");
+        assert_eq!(symbols[2].name, "MyEnum");
+    }
+
+    #[test]
+    fn test_parse_code_symbols_empty() {
+        let mut context = CodeParsingContext::new();
+        let symbols = context.parse_code_symbols("rust", "");
+        assert_eq!(symbols.len(), 0);
+    }
+
+    #[test]
+    fn test_parse_code_symbols_unsupported_language() {
+        let mut context = CodeParsingContext::new();
+        let symbols = context.parse_code_symbols("python", "def my_function():\n    pass");
+        assert_eq!(symbols.len(), 0);
     }
 }
