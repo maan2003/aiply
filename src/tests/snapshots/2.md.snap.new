@@ -1,0 +1,23 @@
+---
+source: src/main.rs
+assertion_line: 98
+expression: "(&parsed_output, extract_symbols(&mut ctx, &parsed_output))"
+---
+(
+    ParsedLlmOutput {
+        instructions: [],
+        code_changes: [
+            CodeChange {
+                language: "rust",
+                code: "struct Foo {}\nimpl Foo {\n    fn func() {}\n}\n",
+            },
+        ],
+    },
+    RelevantSymbols {
+        instruction_symbols: [],
+        code_symbols: [
+            #Foo,
+            #func,
+        ],
+    },
+)
