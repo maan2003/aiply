@@ -1,5 +1,5 @@
-mod instruction_parser;
-mod markdown_parser;
+pub mod instruction_parser;
+pub mod markdown_parser;
 #[cfg(test)]
 mod tests;
 
