@@ -1,7 +1,7 @@
 pub mod instruction_parser;
 pub mod markdown_parser;
 
-use tree_sitter::{Parser as TsParser, Query, QueryCursor};
+use tree_sitter::{Parser, Query, QueryCursor};
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 struct Range {
@@ -18,6 +18,7 @@ pub struct Symbol {
 struct SymbolWithRange {
     symbol: Symbol,
     range: Range,
+    summary_range: Range,
 }
 
 impl std::fmt::Debug for Symbol {
@@ -27,13 +28,13 @@ impl std::fmt::Debug for Symbol {
 }
 
 pub struct CodeParsingContext {
-    parser: TsParser,
+    parser: Parser,
     query: Query,
 }
 
 impl CodeParsingContext {
     pub fn new() -> Self {
-        let mut parser = TsParser::new();
+        let mut parser = Parser::new();
         parser
             .set_language(tree_sitter_rust::language())
             .expect("Error loading Rust grammar");
@@ -50,38 +51,56 @@ impl CodeParsingContext {
             // TODO: support for other languages
             return vec![];
         }
+        let symbols_with_range = self.extract_symbols_with_range(code);
+        self.process_symbols(symbols_with_range)
+    }
+
+    fn extract_symbols_with_range(&mut self, code: &str) -> Vec<SymbolWithRange> {
         let tree = self.parser.parse(code, None).unwrap();
         let root_node = tree.root_node();
-
         let mut symbols_with_range = Vec::new();
         let mut query_cursor = QueryCursor::new();
         for m in query_cursor.matches(&self.query, root_node, code.as_bytes()) {
             let mut name = None;
-            let mut range = None;
+            let mut item_range = None;
+            let mut summary_start = usize::MAX;
+            let mut summary_end = 0;
 
             for capture in m.captures {
+                let byte_range = capture.node.byte_range();
                 match self.query.capture_names()[capture.index as usize].as_str() {
-                    "name" => name = Some((&code[capture.node.byte_range()]).to_string()),
+                    "name" => {
+                        name = Some((&code[byte_range.clone()]).to_string());
+                        summary_start = summary_start.min(byte_range.start);
+                        summary_end = summary_end.max(byte_range.end);
+                    }
+                    "context" => {
+                        summary_start = summary_start.min(byte_range.start);
+                        summary_end = summary_end.max(byte_range.end);
+                    }
                     "item" => {
-                        let byte_range = capture.node.byte_range();
-                        range = Some(Range {
+                        item_range = Some(Range {
                             start: byte_range.start,
                             end: byte_range.end,
-                        });
+                        })
                     }
                     _ => {}
                 }
             }
 
-            if let (Some(name), Some(range)) = (name, range) {
+            if let (Some(name), Some(range)) = (name, item_range) {
                 symbols_with_range.push(SymbolWithRange {
                     symbol: Symbol { parts: vec![name] },
                     range,
+                    summary_range: Range {
+                        start: summary_start,
+                        end: summary_end,
+                    },
                 });
             }
         }
 
-        self.process_symbols(symbols_with_range)
+        symbols_with_range
     }
 
     fn process_symbols(&self, mut symbols_with_range: Vec<SymbolWithRange>) -> Vec<Symbol> {
@@ -93,7 +112,7 @@ impl CodeParsingContext {
         for mut symbol_with_range in symbols_with_range {
             while let Some(last) = stack.last() {
                 // not overlapping
-                if last.range.end < symbol_with_range.range.end {
+                if last.range.end <= symbol_with_range.range.start {
                     stack.pop();
                 } else {
                     break;
@@ -111,7 +130,7 @@ impl CodeParsingContext {
             }
 
             result.push(symbol_with_range.symbol.clone());
-            stack.push(symbol_with_range.clone());
+            stack.push(symbol_with_range);
         }
 
         result
