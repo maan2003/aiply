@@ -39,6 +39,8 @@ fn parse_llm_output(output: &str) -> ParsedOutput {
 
     let pascal_case_pattern = Regex::new(r"\b([A-Z][a-z]+[A-Z][a-zA-Z]*)\b").unwrap();
     let snake_case_pattern = Regex::new(r"\b([a-z]+_[a-z_]+)\b").unwrap();
+    let double_colon_pattern =
+        Regex::new(r"\b([A-Za-z_][A-Za-z0-9_]*)::[A-Za-z_][A-Za-z0-9_]*\b").unwrap();
 
     for event in parser {
         match event {
@@ -57,6 +59,11 @@ fn parse_llm_output(output: &str) -> ParsedOutput {
                         snake_case_pattern
                             .captures_iter(&text)
                             .map(|cap| cap[1].to_string()),
+                    );
+                    parsed_output.code_symbols.extend(
+                        double_colon_pattern
+                            .captures_iter(&text)
+                            .map(|cap| cap[0].to_string()),
                     );
                 }
             }
