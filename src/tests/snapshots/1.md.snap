@@ -18,17 +18,17 @@ expression: "(&parsed_output, extract_symbols(&parsed_output))"
     },
     RelevantSymbols {
         instruction_symbols: [
-            "FileMetadata",
-            "FilePath",
-            "Foo::bar",
-            "FooBar",
-            "FsState",
-            "foo_bar",
+            #FileMetadata,
+            #FilePath,
+            #Foo::bar,
+            #FooBar,
+            #FsState,
+            #foo_bar,
         ],
         code_symbols: [
-            "FileMetadata",
-            "FilePath",
-            "FsState",
+            #FileMetadata,
+            #FilePath,
+            #FsState,
         ],
     },
 )

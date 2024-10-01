@@ -1,11 +1,44 @@
 #![allow(dead_code)]
-use std::path::PathBuf;
-use std::sync::OnceLock;
-
 use clap::{Parser, Subcommand};
 use pulldown_cmark::{CodeBlockKind, Event, Parser as MarkdownParser, Tag, TagEnd};
 use regex::Regex;
+use std::path::PathBuf;
+use std::str::FromStr;
+use std::sync::OnceLock;
 use tree_sitter::{Query, QueryCursor};
+
+#[derive(Clone, PartialEq, Eq)]
+struct Symbol {
+    namespace: Option<String>,
+    name: String,
+}
+
+impl std::fmt::Debug for Symbol {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.namespace {
+            Some(ns) => write!(f, "#{}::{}", ns, self.name),
+            None => write!(f, "#{}", self.name),
+        }
+    }
+}
+
+impl FromStr for Symbol {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some((namespace, name)) = s.rsplit_once("::") {
+            Ok(Symbol {
+                namespace: Some(namespace.to_string()),
+                name: name.to_string(),
+            })
+        } else {
+            Ok(Symbol {
+                namespace: None,
+                name: s.to_string(),
+            })
+        }
+    }
+}
 
 fn parse_code_symbols(text: &str) -> Vec<String> {
     static SYMBOL_REGEX: OnceLock<Regex> = OnceLock::new();
@@ -48,8 +81,8 @@ struct ParsedOutput {
 
 #[derive(Clone, Debug)]
 struct RelevantSymbols {
-    instruction_symbols: Vec<String>,
-    code_symbols: Vec<String>,
+    instruction_symbols: Vec<Symbol>,
+    code_symbols: Vec<Symbol>,
 }
 
 fn extract_symbols(parsed_output: &ParsedOutput) -> RelevantSymbols {
@@ -97,8 +130,14 @@ fn extract_symbols(parsed_output: &ParsedOutput) -> RelevantSymbols {
     code_symbols.dedup();
 
     RelevantSymbols {
-        instruction_symbols,
-        code_symbols,
+        instruction_symbols: instruction_symbols
+            .into_iter()
+            .filter_map(|s| Symbol::from_str(&s).ok())
+            .collect(),
+        code_symbols: code_symbols
+            .into_iter()
+            .filter_map(|s| Symbol::from_str(&s).ok())
+            .collect(),
     }
 }
 
