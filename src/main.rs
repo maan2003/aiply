@@ -25,7 +25,7 @@ impl ParsingContext {
         ParsingContext { parser, query }
     }
 
-    fn parse_rust_code(&mut self, code: &str) -> Vec<Symbol> {
+    fn parse_code_symbols(&mut self, code: &str) -> Vec<Symbol> {
         let tree = self.parser.parse(code, None).unwrap();
         let root_node = tree.root_node();
 
@@ -135,7 +135,7 @@ fn extract_symbols(
     // Extract symbols from code changes
     for code_change in &parsed_output.code_changes {
         if code_change.language.to_lowercase() == "rust" {
-            code_symbols.extend(parsing_ctx.parse_rust_code(&code_change.code));
+            code_symbols.extend(parsing_ctx.parse_code_symbols(&code_change.code));
         }
     }
 
