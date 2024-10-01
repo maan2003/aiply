@@ -9,12 +9,11 @@ fn parse_code_symbols(text: &str) -> Vec<String> {
     let symbol_pattern = Regex::new(
         r#"(?x)
         \b(?:
-            ([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+)  # PascalCase
-            |
-            ([a-z][a-z0-9]*(?:_[a-z0-9]+)+)  # snake_case
-            |
-            ([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)+)  # Foo::Bar
-        )\b
+            [a-z0-9]+(?:(?:::[a-z0-9_A-Z]*|_[a-z0-9]+))+
+           |
+            [A-Z][a-z0-9]*(?:(?:::[a-z0-9_A-Z]*|[A-Z][a-z0-9]*))+
+          )
+        \b
     "#,
     )
     .unwrap();
@@ -173,6 +172,34 @@ mod tests {
             }, {
                 insta::assert_debug_snapshot!(case, parsed_output);
             });
+        }
+    }
+
+    #[test]
+    fn test_parse_code_symbols() {
+        let test_cases = vec![
+            ("HelloWorld FooBar", vec!["HelloWorld", "FooBar"]),
+            ("hello_world foo_bar", vec!["hello_world", "foo_bar"]),
+            (
+                "Foo::Bar Baz::Qux::Quux",
+                vec!["Foo::Bar", "Baz::Qux::Quux"],
+            ),
+            ("BTreeMap::raw_insert", vec!["BTreeMap::raw_insert"]),
+            ("BTreeMap", vec!["BTreeMap"]),
+            (
+                "HelloWorld snake_case Foo::Bar",
+                vec!["HelloWorld", "snake_case", "Foo::Bar"],
+            ),
+            ("hello world", vec![]),
+            (
+                "Symbols with numbers: Hello123World snake_case_42",
+                vec!["Hello123World", "snake_case_42"],
+            ),
+        ];
+
+        for (input, expected) in test_cases {
+            let result = parse_code_symbols(input);
+            assert_eq!(result, expected, "Failed on input: {}", input);
         }
     }
 }
