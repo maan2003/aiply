@@ -102,9 +102,9 @@ mod tests {
         let symbols = context.parse_code_symbols("rust", code);
 
         assert_eq!(symbols.len(), 3);
-        assert_eq!(symbols[0].name, "MyStruct");
-        assert_eq!(symbols[1].name, "my_function");
-        assert_eq!(symbols[2].name, "MyEnum");
+        assert_eq!(format!("{:?}", symbols[0]), "#MyStruct");
+        assert_eq!(format!("{:?}", symbols[1]), "#my_function");
+        assert_eq!(format!("{:?}", symbols[2]), "#MyEnum");
     }
 
     #[test]
