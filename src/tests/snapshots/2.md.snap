@@ -1,0 +1,22 @@
+---
+source: src/main.rs
+expression: "(&parsed_output, ctx.extract_symbols(&parsed_output))"
+---
+(
+    ParsedOutput {
+        instructions: [],
+        code_changes: [
+            CodeChange {
+                language: "rust",
+                code: "struct Foo {}\nimpl Foo {\n    fn func() {}\n}\n",
+            },
+        ],
+    },
+    RelevantSymbols {
+        instruction_symbols: [],
+        code_symbols: [
+            #Foo,
+            #func,
+        ],
+    },
+)

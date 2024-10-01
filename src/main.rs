@@ -5,9 +5,116 @@ use regex::Regex;
 use std::str::FromStr;
 use std::sync::OnceLock;
 use std::{convert::Infallible, path::PathBuf};
-use tree_sitter::{Query, QueryCursor};
+use tree_sitter::{Parser as TsParser, Query, QueryCursor};
 
-#[derive(Clone, PartialEq, Eq)]
+struct ParsingContext {
+    parser: TsParser,
+    query: Query,
+}
+
+impl ParsingContext {
+    fn new() -> Self {
+        let mut parser = TsParser::new();
+        parser
+            .set_language(tree_sitter_rust::language())
+            .expect("Error loading Rust grammar");
+
+        let query = Query::new(
+            tree_sitter_rust::language(),
+            "(function_item name: (identifier) @function)
+             (impl_item type: (type_identifier) @impl)
+             (struct_item name: (type_identifier) @struct)
+             (trait_item name: (type_identifier) @trait)
+             (impl_item
+                 type: (type_identifier) @impl_container
+                 body: (declaration_list
+                     (function_item name: (identifier) @impl_method)))
+             (trait_item
+                 name: (type_identifier) @trait_container
+                 body: (declaration_list
+                     (function_item name: (identifier) @trait_method)))",
+        )
+        .unwrap();
+
+        ParsingContext { parser, query }
+    }
+
+    fn parse_rust_code(&mut self, code: &str) -> Vec<Symbol> {
+        let tree = self.parser.parse(code, None).unwrap();
+        let root_node = tree.root_node();
+
+        let mut symbols = Vec::new();
+        let mut query_cursor = QueryCursor::new();
+        for m in query_cursor.matches(&self.query, root_node, code.as_bytes()) {
+            for capture in m.captures {
+                let name = &code[capture.node.byte_range()];
+                match capture.index {
+                    0 | 1 | 2 | 3 | 4 | 5 => symbols.push(Symbol {
+                        container: None,
+                        name: name.to_string(),
+                    }),
+                    6 => {
+                        let container = m
+                            .captures
+                            .iter()
+                            .find(|c| c.index == 7)
+                            .map(|c| &code[c.node.byte_range()]);
+                        symbols.push(Symbol {
+                            container: container.map(|c| c.to_string()),
+                            name: name.to_string(),
+                        });
+                    }
+                    8 => {
+                        let container = m
+                            .captures
+                            .iter()
+                            .find(|c| c.index == 9)
+                            .map(|c| &code[c.node.byte_range()]);
+                        symbols.push(Symbol {
+                            container: container.map(|c| c.to_string()),
+                            name: name.to_string(),
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        symbols
+    }
+
+    fn extract_symbols(&mut self, parsed_output: &ParsedOutput) -> RelevantSymbols {
+        let mut instruction_symbols = Vec::new();
+        let mut code_symbols = Vec::new();
+
+        // Extract symbols from instructions
+        for instruction in &parsed_output.instructions {
+            instruction_symbols.extend(parse_code_symbols(&instruction.text));
+        }
+
+        // Extract symbols from code changes
+        for code_change in &parsed_output.code_changes {
+            if code_change.language.to_lowercase() == "rust" {
+                code_symbols.extend(self.parse_rust_code(&code_change.code));
+            }
+        }
+
+        instruction_symbols.sort();
+        instruction_symbols.dedup();
+        code_symbols.sort();
+        code_symbols.dedup();
+
+        RelevantSymbols {
+            instruction_symbols: instruction_symbols
+                .into_iter()
+                .filter_map(|s| Symbol::from_str(&s).ok())
+                .collect(),
+            code_symbols,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Symbol {
     container: Option<String>,
     name: String,
@@ -26,9 +133,9 @@ impl FromStr for Symbol {
     type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some((namespace, name)) = s.rsplit_once("::") {
+        if let Some((container, name)) = s.rsplit_once("::") {
             Ok(Symbol {
-                container: Some(namespace.to_string()),
+                container: Some(container.to_string()),
                 name: name.to_string(),
             })
         } else {
@@ -83,62 +190,6 @@ struct ParsedOutput {
 struct RelevantSymbols {
     instruction_symbols: Vec<Symbol>,
     code_symbols: Vec<Symbol>,
-}
-
-fn extract_symbols(parsed_output: &ParsedOutput) -> RelevantSymbols {
-    let mut instruction_symbols = Vec::new();
-    let mut code_symbols = Vec::new();
-
-    // Extract symbols from instructions
-    for instruction in &parsed_output.instructions {
-        instruction_symbols.extend(parse_code_symbols(&instruction.text));
-    }
-
-    let mut parser = tree_sitter::Parser::new();
-    parser
-        .set_language(tree_sitter_rust::language())
-        .expect("Error loading Rust grammar");
-
-    let query = Query::new(
-        tree_sitter_rust::language(),
-        "(function_item name: (identifier) @function)
-         (impl_item type: (type_identifier) @impl)
-         (struct_item name: (type_identifier) @struct)
-         (trait_item name: (type_identifier) @trait)",
-    )
-    .unwrap();
-
-    for code_change in &parsed_output.code_changes {
-        if code_change.language.to_lowercase() == "rust" {
-            let tree = parser.parse(&code_change.code, None).unwrap();
-            let root_node = tree.root_node();
-
-            // Extract names
-            let mut query_cursor = QueryCursor::new();
-            for m in query_cursor.matches(&query, root_node, code_change.code.as_bytes()) {
-                for capture in m.captures {
-                    let name = &code_change.code[capture.node.byte_range()];
-                    code_symbols.push(name.to_string());
-                }
-            }
-        }
-    }
-
-    instruction_symbols.sort();
-    instruction_symbols.dedup();
-    code_symbols.sort();
-    code_symbols.dedup();
-
-    RelevantSymbols {
-        instruction_symbols: instruction_symbols
-            .into_iter()
-            .filter_map(|s| Symbol::from_str(&s).ok())
-            .collect(),
-        code_symbols: code_symbols
-            .into_iter()
-            .filter_map(|s| Symbol::from_str(&s).ok())
-            .collect(),
-    }
 }
 
 fn parse_llm_output(output: &str) -> ParsedOutput {
@@ -229,13 +280,14 @@ enum Commands {
 
 fn main() -> std::io::Result<()> {
     let cli: Cli = Cli::parse();
+    let mut parsing_ctx = ParsingContext::new();
 
     match &cli.command {
         Commands::Parse { file } => {
             let content = std::fs::read_to_string(file)?;
             let parsed_output = parse_llm_output(&content);
-            let relevent_symbols = extract_symbols(&parsed_output);
-            println!("{relevent_symbols:#?}");
+            let relevant_symbols = parsing_ctx.extract_symbols(&parsed_output);
+            println!("{relevant_symbols:#?}");
         }
     }
 
@@ -254,6 +306,7 @@ mod tests {
             .expect("Failed to read test inputs directory")
             .filter_map(|entry| entry.ok())
             .filter_map(|entry| entry.file_name().to_str().map(String::from));
+        let mut ctx = ParsingContext::new();
 
         for case in test_cases {
             let input = fs::read_to_string(format!("src/tests/inputs/{}", case))
@@ -264,7 +317,7 @@ mod tests {
                 snapshot_path => "tests/snapshots",
                 prepend_module_to_snapshot => false,
             }, {
-                insta::assert_debug_snapshot!(&*case, (&parsed_output, extract_symbols(&parsed_output)));
+                insta::assert_debug_snapshot!(&*case, (&parsed_output, ctx.extract_symbols(&parsed_output)));
             });
         }
     }
