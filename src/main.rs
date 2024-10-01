@@ -2,38 +2,38 @@
 use clap::{Parser, Subcommand};
 use pulldown_cmark::{CodeBlockKind, Event, Parser as MarkdownParser, Tag, TagEnd};
 use regex::Regex;
-use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::OnceLock;
+use std::{convert::Infallible, path::PathBuf};
 use tree_sitter::{Query, QueryCursor};
 
 #[derive(Clone, PartialEq, Eq)]
 struct Symbol {
-    namespace: Option<String>,
+    container: Option<String>,
     name: String,
 }
 
 impl std::fmt::Debug for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.namespace {
-            Some(ns) => write!(f, "#{}::{}", ns, self.name),
+        match &self.container {
+            Some(container) => write!(f, "#{}::{}", container, self.name),
             None => write!(f, "#{}", self.name),
         }
     }
 }
 
 impl FromStr for Symbol {
-    type Err = ();
+    type Err = Infallible;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         if let Some((namespace, name)) = s.rsplit_once("::") {
             Ok(Symbol {
-                namespace: Some(namespace.to_string()),
+                container: Some(namespace.to_string()),
                 name: name.to_string(),
             })
         } else {
             Ok(Symbol {
-                namespace: None,
+                container: None,
                 name: s.to_string(),
             })
         }
