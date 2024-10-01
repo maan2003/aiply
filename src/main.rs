@@ -5,6 +5,26 @@ use clap::{Parser, Subcommand};
 use pulldown_cmark::{CodeBlockKind, Event, Parser as MarkdownParser, Tag, TagEnd};
 use regex::Regex;
 
+fn parse_code_symbols(text: &str) -> Vec<String> {
+    let symbol_pattern = Regex::new(
+        r#"(?x)
+        \b(?:
+            ([A-Z][a-z0-9]+(?:[A-Z][a-z0-9]+)+)  # PascalCase
+            |
+            ([a-z][a-z0-9]*(?:_[a-z0-9]+)+)  # snake_case
+            |
+            ([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)+)  # Foo::Bar
+        )\b
+    "#,
+    )
+    .unwrap();
+
+    symbol_pattern
+        .find_iter(text)
+        .map(|m| m.as_str().to_string())
+        .collect()
+}
+
 #[derive(Clone, Debug)]
 struct Instruction {
     text: String,
@@ -37,11 +57,6 @@ fn parse_llm_output(output: &str) -> ParsedOutput {
         code: String::new(),
     };
 
-    let pascal_case_pattern = Regex::new(r"\b([A-Z][a-z]+[A-Z][a-zA-Z]*)\b").unwrap();
-    let snake_case_pattern = Regex::new(r"\b([a-z]+_[a-z_]+)\b").unwrap();
-    let double_colon_pattern =
-        Regex::new(r"\b([A-Za-z_][A-Za-z0-9_]*)::[A-Za-z_][A-Za-z0-9_]*\b").unwrap();
-
     for event in parser {
         match event {
             Event::Text(text) => {
@@ -49,22 +64,7 @@ fn parse_llm_output(output: &str) -> ParsedOutput {
                     current_code_change.code.push_str(&text);
                 } else {
                     current_instruction.push_str(&text);
-
-                    parsed_output.code_symbols.extend(
-                        pascal_case_pattern
-                            .captures_iter(&text)
-                            .map(|cap| cap[1].to_string()),
-                    );
-                    parsed_output.code_symbols.extend(
-                        snake_case_pattern
-                            .captures_iter(&text)
-                            .map(|cap| cap[1].to_string()),
-                    );
-                    parsed_output.code_symbols.extend(
-                        double_colon_pattern
-                            .captures_iter(&text)
-                            .map(|cap| cap[0].to_string()),
-                    );
+                    parsed_output.code_symbols.extend(parse_code_symbols(&text));
                 }
             }
             Event::Code(code) => {
@@ -157,7 +157,7 @@ mod tests {
 
     #[test]
     fn test_parse_llm_output() {
-        let test_cases = fs::read_dir("tests/inputs")
+        let test_cases = fs::read_dir("src/tests/inputs")
             .expect("Failed to read test inputs directory")
             .filter_map(|entry| entry.ok())
             .filter_map(|entry| entry.file_name().to_str().map(String::from));
