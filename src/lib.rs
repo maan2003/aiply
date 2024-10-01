@@ -10,7 +10,7 @@ pub struct Symbol {
     pub parts: Vec<String>,
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct SymbolWithRange {
     symbol: Symbol,
     range: Range<usize>,
@@ -87,13 +87,16 @@ impl CodeParsingContext {
         let mut query_cursor = QueryCursor::new();
         for m in query_cursor.matches(&self.query, root_node, code.as_bytes()) {
             let mut name = None;
-            let mut item_range = None;
             let mut summary_start = usize::MAX;
             let mut summary_end = 0;
+            let mut range_start = usize::MAX;
+            let mut range_end = 0;
 
             for capture in m.captures {
                 let byte_range = capture.node.byte_range();
-                match self.query.capture_names()[capture.index as usize].as_str() {
+                let capture_name = self.query.capture_names()[capture.index as usize].as_str();
+                dbg!(capture_name, capture.node.to_sexp());
+                match capture_name {
                     "name" => {
                         name = Some((&code[byte_range.clone()]).to_string());
                         summary_start = summary_start.min(byte_range.start);
@@ -104,19 +107,22 @@ impl CodeParsingContext {
                         summary_end = summary_end.max(byte_range.end);
                     }
                     "item" => {
-                        item_range = Some(Range {
-                            start: byte_range.start,
-                            end: byte_range.end,
-                        })
+                        range_start = range_start.min(byte_range.start);
+                        range_end = range_end.max(byte_range.end);
                     }
                     _ => {}
                 }
             }
 
-            if let (Some(name), Some(range)) = (name, item_range) {
+            let item_range = Range {
+                start: range_start,
+                end: range_end,
+            };
+
+            if let Some(name) = name {
                 symbols_with_range.push(SymbolWithRange {
                     symbol: Symbol { parts: vec![name] },
-                    range,
+                    range: item_range,
                     summary_range: Range {
                         start: summary_start,
                         end: summary_end,
@@ -180,9 +186,9 @@ impl CodeParsingContext {
     }
 
     fn symbols_match(&self, symbol: &Symbol, important: &Symbol) -> bool {
-        // if symbol.parts.len() < important.parts.len() {
-        //     return false;
-        // }
+        if symbol.parts.len() > important.parts.len() {
+            return false;
+        }
 
         for (s, i) in symbol.parts.iter().zip(important.parts.iter()) {
             if s != i {
