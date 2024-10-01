@@ -16,7 +16,7 @@ expression: "(&parsed_output, ctx.extract_symbols(&parsed_output))"
         instruction_symbols: [],
         code_symbols: [
             #Foo,
-            #func,
+            #Foo::func,
         ],
     },
 )

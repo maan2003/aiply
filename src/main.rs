@@ -2,9 +2,8 @@
 use clap::{Parser, Subcommand};
 use pulldown_cmark::{CodeBlockKind, Event, Parser as MarkdownParser, Tag, TagEnd};
 use regex::Regex;
-use std::str::FromStr;
+use std::path::PathBuf;
 use std::sync::OnceLock;
-use std::{convert::Infallible, path::PathBuf};
 use tree_sitter::{Parser as TsParser, Query, QueryCursor};
 
 struct ParsingContext {
@@ -19,22 +18,9 @@ impl ParsingContext {
             .set_language(tree_sitter_rust::language())
             .expect("Error loading Rust grammar");
 
-        let query = Query::new(
-            tree_sitter_rust::language(),
-            "(function_item name: (identifier) @function)
-             (impl_item type: (type_identifier) @impl)
-             (struct_item name: (type_identifier) @struct)
-             (trait_item name: (type_identifier) @trait)
-             (impl_item
-                 type: (type_identifier) @impl_container
-                 body: (declaration_list
-                     (function_item name: (identifier) @impl_method)))
-             (trait_item
-                 name: (type_identifier) @trait_container
-                 body: (declaration_list
-                     (function_item name: (identifier) @trait_method)))",
-        )
-        .unwrap();
+        let query_source = include_str!("rust_query.scm");
+        let query = Query::new(tree_sitter_rust::language(), &query_source)
+            .expect("Failed to create query");
 
         ParsingContext { parser, query }
     }
@@ -83,34 +69,39 @@ impl ParsingContext {
         symbols
     }
 
-    fn extract_symbols(&mut self, parsed_output: &ParsedOutput) -> RelevantSymbols {
-        let mut instruction_symbols = Vec::new();
-        let mut code_symbols = Vec::new();
+    fn parse_instruction_symbols(&self, text: &str) -> Vec<Symbol> {
+        static SYMBOL_REGEX: OnceLock<Regex> = OnceLock::new();
+        let symbol_pattern = SYMBOL_REGEX.get_or_init(|| {
+            Regex::new(
+                r#"(?x)
+                \b(?:
+                    [a-z0-9]+(?:(?:::[a-z0-9_A-Z]*|_[a-z0-9]+))+
+                   |
+                    [A-Z][a-z0-9]*(?:(?:::[a-z0-9_A-Z]*|[A-Z][a-z0-9]*))+
+                  )
+                \b
+            "#,
+            )
+            .unwrap()
+        });
 
-        // Extract symbols from instructions
-        for instruction in &parsed_output.instructions {
-            instruction_symbols.extend(parse_code_symbols(&instruction.text));
-        }
-
-        // Extract symbols from code changes
-        for code_change in &parsed_output.code_changes {
-            if code_change.language.to_lowercase() == "rust" {
-                code_symbols.extend(self.parse_rust_code(&code_change.code));
-            }
-        }
-
-        instruction_symbols.sort();
-        instruction_symbols.dedup();
-        code_symbols.sort();
-        code_symbols.dedup();
-
-        RelevantSymbols {
-            instruction_symbols: instruction_symbols
-                .into_iter()
-                .filter_map(|s| Symbol::from_str(&s).ok())
-                .collect(),
-            code_symbols,
-        }
+        symbol_pattern
+            .find_iter(text)
+            .map(|m| {
+                let s = m.as_str();
+                if let Some((container, name)) = s.rsplit_once("::") {
+                    Symbol {
+                        container: Some(container.to_string()),
+                        name: name.to_string(),
+                    }
+                } else {
+                    Symbol {
+                        container: None,
+                        name: s.to_string(),
+                    }
+                }
+            })
+            .collect()
     }
 }
 
@@ -129,44 +120,34 @@ impl std::fmt::Debug for Symbol {
     }
 }
 
-impl FromStr for Symbol {
-    type Err = Infallible;
+fn extract_symbols(
+    parsing_ctx: &mut ParsingContext,
+    parsed_output: &ParsedOutput,
+) -> RelevantSymbols {
+    let mut instruction_symbols = Vec::new();
+    let mut code_symbols = Vec::new();
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Some((container, name)) = s.rsplit_once("::") {
-            Ok(Symbol {
-                container: Some(container.to_string()),
-                name: name.to_string(),
-            })
-        } else {
-            Ok(Symbol {
-                container: None,
-                name: s.to_string(),
-            })
+    // Extract symbols from instructions
+    for instruction in &parsed_output.instructions {
+        instruction_symbols.extend(parsing_ctx.parse_instruction_symbols(&instruction.text));
+    }
+
+    // Extract symbols from code changes
+    for code_change in &parsed_output.code_changes {
+        if code_change.language.to_lowercase() == "rust" {
+            code_symbols.extend(parsing_ctx.parse_rust_code(&code_change.code));
         }
     }
-}
 
-fn parse_code_symbols(text: &str) -> Vec<String> {
-    static SYMBOL_REGEX: OnceLock<Regex> = OnceLock::new();
-    let symbol_pattern = SYMBOL_REGEX.get_or_init(|| {
-        Regex::new(
-            r#"(?x)
-            \b(?:
-                [a-z0-9]+(?:(?:::[a-z0-9_A-Z]*|_[a-z0-9]+))+
-               |
-                [A-Z][a-z0-9]*(?:(?:::[a-z0-9_A-Z]*|[A-Z][a-z0-9]*))+
-              )
-            \b
-        "#,
-        )
-        .unwrap()
-    });
+    instruction_symbols.sort();
+    instruction_symbols.dedup();
+    code_symbols.sort();
+    code_symbols.dedup();
 
-    symbol_pattern
-        .find_iter(text)
-        .map(|m| m.as_str().to_string())
-        .collect()
+    RelevantSymbols {
+        instruction_symbols,
+        code_symbols,
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -286,7 +267,7 @@ fn main() -> std::io::Result<()> {
         Commands::Parse { file } => {
             let content = std::fs::read_to_string(file)?;
             let parsed_output = parse_llm_output(&content);
-            let relevant_symbols = parsing_ctx.extract_symbols(&parsed_output);
+            let relevant_symbols = extract_symbols(&mut parsing_ctx, &parsed_output);
             println!("{relevant_symbols:#?}");
         }
     }
@@ -317,36 +298,41 @@ mod tests {
                 snapshot_path => "tests/snapshots",
                 prepend_module_to_snapshot => false,
             }, {
-                insta::assert_debug_snapshot!(&*case, (&parsed_output, ctx.extract_symbols(&parsed_output)));
+                insta::assert_debug_snapshot!(&*case, (&parsed_output, extract_symbols(&mut ctx, &parsed_output)));
             });
         }
     }
 
     #[test]
-    fn test_parse_code_symbols() {
+    fn test_parse_instruction_symbols() {
+        let ctx = ParsingContext::new();
         let test_cases = vec![
-            ("HelloWorld FooBar", vec!["HelloWorld", "FooBar"]),
-            ("hello_world foo_bar", vec!["hello_world", "foo_bar"]),
+            ("HelloWorld FooBar", vec!["#HelloWorld", "#FooBar"]),
+            ("hello_world foo_bar", vec!["#hello_world", "#foo_bar"]),
             (
                 "Foo::Bar Baz::Qux::Quux",
-                vec!["Foo::Bar", "Baz::Qux::Quux"],
+                vec!["#Foo::Bar", "#Baz::Qux::Quux"],
             ),
-            ("BTreeMap::raw_insert", vec!["BTreeMap::raw_insert"]),
-            ("BTreeMap", vec!["BTreeMap"]),
+            ("BTreeMap::raw_insert", vec!["#BTreeMap::raw_insert"]),
+            ("BTreeMap", vec!["#BTreeMap"]),
             (
                 "HelloWorld snake_case Foo::Bar",
-                vec!["HelloWorld", "snake_case", "Foo::Bar"],
+                vec!["#HelloWorld", "#snake_case", "#Foo::Bar"],
             ),
             ("hello world", vec![]),
             ("Hello World", vec![]),
             (
                 "Symbols with numbers: Hello123World snake_case_42",
-                vec!["Hello123World", "snake_case_42"],
+                vec!["#Hello123World", "#snake_case_42"],
             ),
         ];
 
         for (input, expected) in test_cases {
-            let result = parse_code_symbols(input);
+            let result = ctx
+                .parse_instruction_symbols(input)
+                .into_iter()
+                .map(|s| format!("{s:?}"))
+                .collect::<Vec<_>>();
             assert_eq!(result, expected, "Failed on input: {}", input);
         }
     }
