@@ -186,6 +186,7 @@ mod tests {
         assert_eq!(format!("{:?}", symbols[1]), "#MyStruct");
         assert_eq!(format!("{:?}", symbols[2]), "#MyStruct::my_method");
     }
+
     #[test]
     fn test_parse_code_symbols_nested_mods_and_functions() {
         let mut context = CodeParsingContext::new();
