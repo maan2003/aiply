@@ -41,7 +41,7 @@ impl CodeParsingContext {
 
     pub fn parse_code_symbols(&mut self, language: &str, code: &str) -> Vec<Symbol> {
         if language != "rust" {
-            // TODO: support for other langauges
+            // TODO: support for other languages
             return vec![];
         }
         let tree = self.parser.parse(code, None).unwrap();
@@ -50,37 +50,24 @@ impl CodeParsingContext {
         let mut symbols = Vec::new();
         let mut query_cursor = QueryCursor::new();
         for m in query_cursor.matches(&self.query, root_node, code.as_bytes()) {
+            let mut container = None;
+            let mut name = None;
+            let mut is_item = false;
+
             for capture in m.captures {
-                let name = &code[capture.node.byte_range()];
-                match capture.index {
-                    0 | 1 | 2 | 3 | 4 | 5 => symbols.push(Symbol {
-                        container: None,
-                        name: name.to_string(),
-                    }),
-                    6 => {
-                        let container = m
-                            .captures
-                            .iter()
-                            .find(|c| c.index == 7)
-                            .map(|c| &code[c.node.byte_range()]);
-                        symbols.push(Symbol {
-                            container: container.map(|c| c.to_string()),
-                            name: name.to_string(),
-                        });
-                    }
-                    8 => {
-                        let container = m
-                            .captures
-                            .iter()
-                            .find(|c| c.index == 9)
-                            .map(|c| &code[c.node.byte_range()]);
-                        symbols.push(Symbol {
-                            container: container.map(|c| c.to_string()),
-                            name: name.to_string(),
-                        });
-                    }
+                let capture_text = &code[capture.node.byte_range()];
+                match self.query.capture_names()[capture.index as usize].as_str() {
+                    "name" => name = Some(capture_text.to_string()),
+                    "item" => is_item = true,
                     _ => {}
                 }
+            }
+
+            if is_item && name.is_some() {
+                symbols.push(Symbol {
+                    container,
+                    name: name.unwrap(),
+                });
             }
         }
 
