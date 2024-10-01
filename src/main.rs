@@ -6,12 +6,12 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 use tree_sitter::{Parser as TsParser, Query, QueryCursor};
 
-struct ParsingContext {
+struct CodeParsingContext {
     parser: TsParser,
     query: Query,
 }
 
-impl ParsingContext {
+impl CodeParsingContext {
     fn new() -> Self {
         let mut parser = TsParser::new();
         parser
@@ -22,7 +22,7 @@ impl ParsingContext {
         let query = Query::new(tree_sitter_rust::language(), &query_source)
             .expect("Failed to create query");
 
-        ParsingContext { parser, query }
+        CodeParsingContext { parser, query }
     }
 
     fn parse_code_symbols(&mut self, code: &str) -> Vec<Symbol> {
@@ -68,41 +68,41 @@ impl ParsingContext {
 
         symbols
     }
+}
 
-    fn parse_instruction_symbols(&self, text: &str) -> Vec<Symbol> {
-        static SYMBOL_REGEX: OnceLock<Regex> = OnceLock::new();
-        let symbol_pattern = SYMBOL_REGEX.get_or_init(|| {
-            Regex::new(
-                r#"(?x)
-                \b(?:
-                    [a-z0-9]+(?:(?:::[a-z0-9_A-Z]*|_[a-z0-9]+))+
-                   |
-                    [A-Z][a-z0-9]*(?:(?:::[a-z0-9_A-Z]*|[A-Z][a-z0-9]*))+
-                  )
-                \b
-            "#,
-            )
-            .unwrap()
-        });
+fn parse_instruction_symbols(text: &str) -> Vec<Symbol> {
+    static SYMBOL_REGEX: OnceLock<Regex> = OnceLock::new();
+    let symbol_pattern = SYMBOL_REGEX.get_or_init(|| {
+        Regex::new(
+            r#"(?x)
+            \b(?:
+                [a-z0-9]+(?:(?:::[a-z0-9_A-Z]*|_[a-z0-9]+))+
+               |
+                [A-Z][a-z0-9]*(?:(?:::[a-z0-9_A-Z]*|[A-Z][a-z0-9]*))+
+              )
+            \b
+        "#,
+        )
+        .unwrap()
+    });
 
-        symbol_pattern
-            .find_iter(text)
-            .map(|m| {
-                let s = m.as_str();
-                if let Some((container, name)) = s.rsplit_once("::") {
-                    Symbol {
-                        container: Some(container.to_string()),
-                        name: name.to_string(),
-                    }
-                } else {
-                    Symbol {
-                        container: None,
-                        name: s.to_string(),
-                    }
+    symbol_pattern
+        .find_iter(text)
+        .map(|m| {
+            let s = m.as_str();
+            if let Some((container, name)) = s.rsplit_once("::") {
+                Symbol {
+                    container: Some(container.to_string()),
+                    name: name.to_string(),
                 }
-            })
-            .collect()
-    }
+            } else {
+                Symbol {
+                    container: None,
+                    name: s.to_string(),
+                }
+            }
+        })
+        .collect()
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -121,7 +121,7 @@ impl std::fmt::Debug for Symbol {
 }
 
 fn extract_symbols(
-    parsing_ctx: &mut ParsingContext,
+    parsing_ctx: &mut CodeParsingContext,
     parsed_output: &ParsedOutput,
 ) -> RelevantSymbols {
     let mut instruction_symbols = Vec::new();
@@ -129,7 +129,7 @@ fn extract_symbols(
 
     // Extract symbols from instructions
     for instruction in &parsed_output.instructions {
-        instruction_symbols.extend(parsing_ctx.parse_instruction_symbols(&instruction.text));
+        instruction_symbols.extend(parse_instruction_symbols(&instruction.text));
     }
 
     // Extract symbols from code changes
@@ -261,7 +261,7 @@ enum Commands {
 
 fn main() -> std::io::Result<()> {
     let cli: Cli = Cli::parse();
-    let mut parsing_ctx = ParsingContext::new();
+    let mut parsing_ctx = CodeParsingContext::new();
 
     match &cli.command {
         Commands::Parse { file } => {
@@ -287,7 +287,7 @@ mod tests {
             .expect("Failed to read test inputs directory")
             .filter_map(|entry| entry.ok())
             .filter_map(|entry| entry.file_name().to_str().map(String::from));
-        let mut ctx = ParsingContext::new();
+        let mut ctx = CodeParsingContext::new();
 
         for case in test_cases {
             let input = fs::read_to_string(format!("src/tests/inputs/{}", case))
@@ -305,7 +305,6 @@ mod tests {
 
     #[test]
     fn test_parse_instruction_symbols() {
-        let ctx = ParsingContext::new();
         let test_cases = vec![
             ("HelloWorld FooBar", vec!["#HelloWorld", "#FooBar"]),
             ("hello_world foo_bar", vec!["#hello_world", "#foo_bar"]),
@@ -328,8 +327,7 @@ mod tests {
         ];
 
         for (input, expected) in test_cases {
-            let result = ctx
-                .parse_instruction_symbols(input)
+            let result = parse_instruction_symbols(input)
                 .into_iter()
                 .map(|s| format!("{s:?}"))
                 .collect::<Vec<_>>();
