@@ -1,0 +1,17 @@
+---
+source: src/integration_tests.rs
+expression: run_test(&input)
+---
+TestOutput {
+    llm_output: ParsedLlmOutput {
+        instructions: [],
+        code_changes: [
+            CodeChange {
+                language: "python",
+                code: "def main():\n    pass\n",
+            },
+        ],
+    },
+    instruction_symbols: [],
+    code_symbols: [],
+}

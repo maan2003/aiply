@@ -1,0 +1,23 @@
+---
+source: src/integration_tests.rs
+expression: run_test(&input)
+---
+TestOutput {
+    llm_output: ParsedLlmOutput {
+        instructions: [],
+        code_changes: [
+            CodeChange {
+                language: "rust",
+                code: "struct Foo {}\nimpl Foo {\n    fn func() {}\n}\n\nmod nested {\n    mod eed {\n        fn foo() {}\n    }\n}\n",
+            },
+        ],
+    },
+    instruction_symbols: [],
+    code_symbols: [
+        #Foo,
+        #Foo::func,
+        #nested,
+        #nested::eed,
+        #nested::eed::foo,
+    ],
+}
