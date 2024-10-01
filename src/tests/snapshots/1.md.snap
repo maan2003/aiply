@@ -5,7 +5,7 @@ expression: parsed_output
 ParsedOutput {
     instructions: [
         Instruction {
-            text: "Add the `Encode` and `Decode` derive attributes to the `FsState`, `FilePath`, and `FileMetadata` structs:",
+            text: "Add the `Encode` and `Decode` derive attributes to the `FsState`, `FilePath`, and `FileMetadata` structs:Foo::bar foo_bar FooBar",
         },
     ],
     code_changes: [
@@ -19,6 +19,9 @@ ParsedOutput {
         "Encode",
         "FileMetadata",
         "FilePath",
+        "Foo::bar",
+        "FooBar",
         "FsState",
+        "foo_bar",
     ],
 }
