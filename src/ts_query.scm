@@ -43,12 +43,13 @@
         (variable_declarator
             name: (_) @name)))) @item
 
-([ (comment) ]* .
 (program
+    ([ (comment) ]* .
     (lexical_declaration
         ["let" "const"] @context
         (variable_declarator
-            name: (_) @name)))) @item
+            name: (_) @name))) @item
+)
 
 ([ (comment) ]* .
 (class_declaration

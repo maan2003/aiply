@@ -99,7 +99,6 @@ impl<'a> CollapsedDocument<'a> {
                     // Remove the matched collapse to avoid duplicate matches
                     collapses.remove(index);
                 } else {
-                    panic!("not found `{prefix}`");
                     // If no matching collapse is found, keep the original line
                     result.push_str(line);
                 }
