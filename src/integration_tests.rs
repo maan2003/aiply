@@ -4,7 +4,7 @@ use crate::{CodeParsingContext, Symbol};
 use std::fs;
 
 fn run_test(input: &str) -> TestOutput {
-    let mut ctx = CodeParsingContext::new();
+    let mut ctx = CodeParsingContext::new("rust");
     let llm_output = ParsedLlmOutput::parse(input);
     let mut instruction_symbols = Vec::new();
     let mut code_symbols = Vec::new();

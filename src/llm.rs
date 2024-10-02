@@ -4,7 +4,7 @@ use anyhow::Context;
 use ureq::{json, serde_json::Value};
 
 const INSTRUCTIONS: &str =
-"You are a Rust code modification assistant. Your task is to precisely apply specified changes to given Rust code structures while adhering to the following guidelines:
+"You are a code modification assistant. Your task is to precisely apply specified changes to given code structures while adhering to the following guidelines:
 
 1. Make only the changes explicitly requested.
 2. Preserve all existing code not mentioned in the change request.
@@ -18,14 +18,18 @@ const INSTRUCTIONS: &str =
 10. Pay close attention to the placement of new structs, traits, and implementations, inserting them logically within the file.
 11. Ensure that all new additions are included in the output, even if they require creating new sections in the file.
 
-Your response should consist solely of the updated Rust code structure.";
+Your response should consist solely of the updated code structure.";
 
-pub fn prompt_for_edits(collapsed_document: &str, patch: &str) -> anyhow::Result<String> {
+pub fn prompt_for_edits(
+    language: &str,
+    collapsed_document: &str,
+    patch: &str,
+) -> anyhow::Result<String> {
     let start = Instant::now();
     let prompt = format!(
-        "Given the following Rust file structure:
+        "Given the following file structure:
 
-```rust
+```{language}
 {collapsed_document}
 ```
 
@@ -47,9 +51,15 @@ Make the follow edits:
     let content = value["choices"][0]["message"]["content"]
         .as_str()
         .context("invalid output")?;
-    Ok(content
-        .trim_start_matches("```rust")
-        .trim_end_matches("```")
-        .trim()
-        .to_owned())
+    let trimmed = if content.starts_with("```") {
+        let start = content
+            .find("\n")
+            .map(|x| x + "\n".len())
+            .unwrap_or("```".len());
+        &content[start..]
+    } else {
+        content
+    };
+
+    Ok(trimmed.trim_end_matches("\n```").to_owned())
 }

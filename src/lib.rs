@@ -87,7 +87,7 @@ impl<'a> CollapsedDocument<'a> {
                         .enumerate()
                         .find(|(_, c)| match &c.replacement {
                             CollapseReplacement::Range(range) => {
-                                self.original_document[range.clone()] == *prefix.trim()
+                                dbg!(&self.original_document[range.clone()]) == prefix.trim()
                             }
                             CollapseReplacement::Imports => prefix.trim() == "use",
                         })
@@ -99,6 +99,7 @@ impl<'a> CollapsedDocument<'a> {
                     // Remove the matched collapse to avoid duplicate matches
                     collapses.remove(index);
                 } else {
+                    panic!("not found `{prefix}`");
                     // If no matching collapse is found, keep the original line
                     result.push_str(line);
                 }
@@ -113,20 +114,31 @@ impl<'a> CollapsedDocument<'a> {
 }
 
 impl CodeParsingContext {
-    pub fn new() -> Self {
+    pub fn new(language: &str) -> Self {
         let mut parser = Parser::new();
+        let ts_language = match language {
+            "rust" => tree_sitter_rust::LANGUAGE,
+            "typescript" => tree_sitter_typescript::LANGUAGE_TYPESCRIPT,
+            _ => panic!("Unsupported language"),
+        };
+        let ts_language = tree_sitter::Language::new(ts_language);
         parser
-            .set_language(tree_sitter_rust::language())
-            .expect("Error loading Rust grammar");
+            .set_language(&ts_language)
+            .expect("Error loading language grammar");
 
-        let query_source = include_str!("rust_query.scm");
-        let query = Query::new(tree_sitter_rust::language(), &query_source)
-            .expect("Failed to create query");
+        let query_source = match language {
+            "rust" => include_str!("rust_query.scm"),
+            "typescript" => include_str!("ts_query.scm"),
+            _ => panic!("Unsupported language"),
+        };
+        let query = Query::new(&ts_language, query_source).expect("Failed to create query");
         let collapse_query = Query::new(
-            tree_sitter_rust::language(),
-            "
-            (use_declaration)+ @collapse
-            ",
+            &ts_language,
+            match language {
+                "rust" => "(use_declaration)+ @collapse",
+                "typescript" => "(import_statement)+ @collapse",
+                _ => panic!("Unsupported language"),
+            },
         )
         .expect("Failed to create query");
 
@@ -137,11 +149,7 @@ impl CodeParsingContext {
         }
     }
 
-    pub fn parse_code_symbols(&mut self, language: &str, code: &str) -> Vec<Symbol> {
-        if language != "rust" {
-            // TODO: support for other languages
-            return vec![];
-        }
+    pub fn parse_code_symbols(&mut self, code: &str) -> Vec<Symbol> {
         let symbols_with_range = self.extract_symbols_with_range(code);
         self.process_symbols(symbols_with_range)
             .into_iter()
@@ -163,7 +171,7 @@ impl CodeParsingContext {
 
             for capture in m.captures {
                 let byte_range = capture.node.byte_range();
-                let capture_name = self.query.capture_names()[capture.index as usize].as_str();
+                let capture_name = self.query.capture_names()[capture.index as usize];
                 match capture_name {
                     "name" => {
                         name = Some((&code[byte_range.clone()]).to_string());
@@ -327,8 +335,8 @@ mod tests {
 
     #[test]
     fn test_parse_code_symbols_empty() {
-        let mut context = CodeParsingContext::new();
-        let symbols = context.parse_code_symbols("rust", "");
+        let mut context = CodeParsingContext::new("rust");
+        let symbols = context.parse_code_symbols("");
         assert_eq!(symbols.len(), 0);
     }
 }
