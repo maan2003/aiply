@@ -1,6 +1,6 @@
 use aiply::instruction_parser::parse_instruction_symbols;
 use aiply::markdown_parser::ParsedLlmOutput;
-use aiply::CodeParsingContext;
+use aiply::{llm, CodeParsingContext};
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::fs;
@@ -39,10 +39,20 @@ fn main() -> Result<()> {
         important_symbols.extend(parse_instruction_symbols(&instructions.text));
     }
 
+    let start = std::time::Instant::now();
     let collapsed_doc = context.collapse_unrelated_symbols(&source_code, important_symbols);
-
-    eprintln!("Collapsed document:");
-    println!("{}", collapsed_doc.collapsed_document());
+    let duration = start.elapsed();
+    eprintln!("Time taken to collapse unrelated symbols: {:?}", duration);
+    let collapsed_text = collapsed_doc.collapsed_document();
+    let start = std::time::Instant::now();
+    let response = llm::prompt_for_edits(&collapsed_text, &llm_output)?;
+    let duration = start.elapsed();
+    eprintln!("Time taken to prompt for edits: {:?}", duration);
+    let start = std::time::Instant::now();
+    let uncollapsed = collapsed_doc.uncollapse_document(&response);
+    let duration = start.elapsed();
+    eprintln!("Time taken to uncollapse document: {:?}", duration);
+    println!("{uncollapsed}");
 
     Ok(())
 }

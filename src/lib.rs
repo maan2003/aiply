@@ -1,4 +1,5 @@
 pub mod instruction_parser;
+pub mod llm;
 pub mod markdown_parser;
 
 use std::ops::Range;
@@ -29,11 +30,13 @@ pub struct CodeParsingContext {
     collapse_query: Query,
 }
 
+#[derive(Clone)]
 pub enum CollapseReplacement {
     Range(Range<usize>),
     Imports,
 }
 
+#[derive(Clone)]
 pub struct Collapse {
     replacement: CollapseReplacement,
     target: Range<usize>,
@@ -69,6 +72,42 @@ impl<'a> CollapsedDocument<'a> {
         // Add remaining uncollapsed content
         result.push_str(&self.original_document[last_end..]);
 
+        result
+    }
+
+    pub fn uncollapse_document(&self, new_collapsed: &str) -> String {
+        let mut result = String::new();
+        let mut collapses = self.collapses.clone();
+        for line in new_collapsed.lines() {
+            if line.ends_with("...") {
+                let prefix = line.trim_end_matches("...");
+                if let Some((index, collapse)) =
+                    collapses
+                        .iter()
+                        .enumerate()
+                        .find(|(_, c)| match &c.replacement {
+                            CollapseReplacement::Range(range) => {
+                                self.original_document[range.clone()] == *prefix.trim()
+                            }
+                            CollapseReplacement::Imports => prefix.trim() == "use",
+                        })
+                {
+                    let indent = prefix.len() - prefix.trim_start().len();
+                    result.push_str(&prefix[..indent]);
+                    // Use the target range for uncollapsing
+                    result.push_str(&self.original_document[collapse.target.clone()]);
+                    // Remove the matched collapse to avoid duplicate matches
+                    collapses.remove(index);
+                } else {
+                    // If no matching collapse is found, keep the original line
+                    result.push_str(line);
+                }
+            } else {
+                // For lines without "...", keep them as is
+                result.push_str(line);
+            }
+            result.push('\n');
+        }
         result
     }
 }
