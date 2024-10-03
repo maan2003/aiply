@@ -45,7 +45,8 @@ Make the follow edits:
             "messages": [
                 { "role": "system", "content": INSTRUCTIONS },
                 { "role": "user", "content": prompt }
-            ]
+            ],
+            "temperature": 0.0,
         }))?;
     let value = response.into_json::<Value>()?;
     let content = value["choices"][0]["message"]["content"]

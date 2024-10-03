@@ -277,10 +277,14 @@ impl CodeParsingContext {
     }
 
     fn symbols_match(&self, symbol: &Symbol, important: &Symbol) -> bool {
+        // FIXME: parent will still be collapsed :/
+        // Check if symbol is a suffix of important
         if symbol.parts.len() > important.parts.len() {
-            return false;
+            let start = symbol.parts.len() - important.parts.len();
+            return &symbol.parts[start..] == &important.parts;
         }
 
+        // Check if symbol matches the start of important
         for (s, i) in symbol.parts.iter().zip(important.parts.iter()) {
             if s != i {
                 return false;
